@@ -1,170 +1,146 @@
 ## UI
 
 library(shiny)
-library(shinyjs)
-library(plotly)
-library(colourpicker)
-library(shinythemes)
-library(V8)
+library(shinydashboard)
+library(DT)
+library(ggplot2)
+library(gplots)
+library(DESeq2)
 
-shinyUI(
-  fluidPage(theme = shinytheme("lumen"),
-            useShinyjs(),
-            tags$head(
-              tags$style(HTML("
-                              p, li {
-                              /**font-family: 'Lora', 'Times New Roman', serif;**/
-                              font-size: 20px;
-                              color: #404040;
-                              line-height: 1.2;
-                              }
-                              #title {
-                              font-size: 60px;
-                              }
-                              p#titledescript {
-                              font-size: 16px;
-                              font-style: italic;
-                              }
-                              li {
-                              font-size: 16px;
-                              }
-                              body {
-                              padding: 0 2.5em 0 2.5em;
-                              }
-                              li p {
-                              margin: 0;
-                              padding: 0.1em;
-                              }
-                              p + ul {
-                              margin-top: -10px;
-                              }
-                              "))
-              ),
-            
-            extendShinyjs(text = "shinyjs.refresh = function() { redir_Str = window.location.href.split('?')[0] + '?compare'; window.location.href = redir_Str ; }"),
-            # Application title
-            titlePanel("Mascha's title"),
-            p("something something something", id="titledescript"),
-            
-            tabsetPanel( id = "main_panel",
-                         # main panel for tSNE plot and group selection
-                         tabPanel('Summary',
-                                  id = "summary",
-                                  # selected button!!
-                                  fluidRow(
-                                    br(),
-                                    # welcome text
-                                    column(8, offset = 1,
-                                           tags$div(
-                                             tags$p("Welkom")
-                                             ),
-                                           
-                                    
-                                    # main window plots
-                                    column(8,
-                                           plotlyOutput('Plot',height = '600px'),
-                                           # we may not want the barchart displayed; see issue#30
-                                           # plotlyOutput('countPerCluster'),
-                                           br(),
-                                           offset=2)
-                                  )),
-                         # panel for displaying individual gene expression data
-                         tabPanel('Visualize genes',
-                                  id = "geneEpxr",
-                                  column(4, wellPanel(selectizeInput('input_genes', h1('Select genes'),
-                                                                     choices = list_of_genesymbols,
-                                                                     options = list(maxItems = geneExpr_maxItems),
-                                                                     selected = c('LGALS1_ENSG00000100097'),
-                                                                     multiple = TRUE),
-                                                      actionButton("exprGeneButton", "Visualize"),
-                                                      div(id = 'tsneHeatmapOptions',
-                                                          sliderInput("MinMax", label= h5("Adjust heatmap color scale:"), min = 0, max = 1, value = c(0,0.4), step= 0.02),
-                                                          sliderInput("Midpoint", label= h5("Adjust midpoint of color scale:"), min = 0, max = 1, value = 0.1, step= 0.02),
-                                                          colourInput("colmax", "Select color of scale maximum", value = geneExpr_colorMax),
-                                                          colourInput("colmid", "Select color of scale midpoint", value = geneExpr_colorMid),
-                                                          colourInput("colmin", "Select color of scale minimum", value = geneExpr_colorMin)
-                                                      )
-                                  )
-                                  ),
-                                  column(8,
-                                         tabsetPanel(id ='exprVis',
-                                                     tabPanel('tSNE heatmap', value = 'tSNE',
-                                                              uiOutput("geneExprPlot")),
-                                                     tabPanel('Box plots', value = 'box',
-                                                              plotlyOutput("geneExprGeneCluster"))))
-                         ),
-                         # exploration of selection
-                         tabPanel( 'Nog een tabblad',
-                                   id= 'Compare',
-                                   tabsetPanel(tabPanel('Compare',
-                                                        column(3,wellPanel(
-                                                          h4(id = "select_text", "Please select first group"),
-                                                          actionButton(inputId = "pop_one_selected", label = "Save group 1"),
-                                                          actionButton(inputId = "pop_two_selected", label = "Save group 2"),
-                                                          br(),
-                                                          div( id = 'definedInputSelection',
-                                                               checkboxInput(inputId = 'selectDefinedGroup',
-                                                                             value = F,
-                                                                             label = 'Select predefined cluster(s) for group 1'),
-                                                               checkboxGroupInput(inputId = 'whichGroups',
-                                                                                  label = 'Predefined clusters:',
-                                                                                  choices = unique(tsne$id) %>% sort)
-                                                          ),
-                                                          downloadButton(outputId = 'downloadDifGenes', label = 'Download'),
-                                                          br(),
-                                                          br(),
-                                                          actionButton(inputId = "reload", label = "Select new groups"))),
-                                                        column(9,
-                                                               div(id= "div_select_one", plotlyOutput('tSNE_select_one',height = '600px')),
-                                                               div(id = "div_select_two", plotlyOutput('tSNE_select_two',height = '600px')),
-                                                               dataTableOutput('difGeneTable'),
-                                                               div(id= 'comparisonOutput',
-                                                                   
-                                                                   tabsetPanel(tabPanel('Visualize genes',
-                                                                                        id = "histPlot",
-                                                                                        plotlyOutput('histPlot', height = '500px')),
-                                                                               tabPanel('Visualize selected groups',
-                                                                                        id = 'tSNE plot',
-                                                                                        plotlyOutput('tSNE_summary'),
-                                                                                        plotlyOutput('cell_type_summary')
-                                                                               )
-                                                                   )
-                                                               )
-                                                        )),
-                                               tabPanel('Create',
-                                                        column(3,
-                                                               textInput(inputId = 'newClusterName',label  ='New name'),
-                                                               h4(id = 'selectTextForRename', 'Please select group to rename'),
-                                                               actionButton(inputId = 'renamePoulationButton',label = 'Rename Selection'),
-                                                               checkboxInput(inputId = 'selectDefinedGroupForRename',
-                                                                             value = F,
-                                                                             label = 'Select predefined cluster(s)'),
-                                                               checkboxGroupInput(inputId = 'whichGroupsForRename',
-                                                                                  label = 'Predefined clusters:',
-                                                                                  choices = unique(tsne$id) %>% sort)),
-                                                        column(9,
-                                                               plotlyOutput('tSNE_selectForRename',height = '600px')))
-                                   )
-                         ),
-                         tabPanel( 'Upload data',
-                                   id= 'upload',
-                                   sidebarPanel(fileInput('barcodes_file', 'Barcodes .tsv File',
-                                                          accept=c('text/tsv', 
-                                                                   'text/comma-separated-values,text/plain', 
-                                                                   '.tsv')), 
-                                                fileInput('genes_file', 'Genes .tsv File',
-                                                          accept=c('text/tsv', 
-                                                                   'text/comma-separated-values,text/plain', 
-                                                                   '.tsv')),
-                                                fileInput('tsne_file', 'tsne tdf File',
-                                                          accept = NULL),
-                                                fileInput('mtx_file', 'Expression matrix .mtx File',
-                                                          accept=c(
-                                                            '.mtx')), 
-                                                actionButton(inputId = "upload_button", label = "Submit Data")
-                                   )
-                         )
-                         )
-              )
-            ))
+header <- dashboardHeader(
+  title = "Screen Analysis"
 )
+
+sidebar <- dashboardSidebar( 
+  sidebarMenu(id="menu1",
+              menuItem("Intro", icon = icon("user"),
+                       menuSubItem("Hello", tabName = "intro"),
+                       menuSubItem("Workflow", tabName = "workflow")
+              ),
+              menuItem("Data Input", icon = icon("file"),
+                       menuSubItem("Screen data", tabName = "datainput")
+              ),
+              menuItem("Summary", tabName="dataSummary", icon = icon("table")),
+              
+              menuItem("Analysis", icon = icon("area-chart"),
+                       menuSubItem("DEseq2", tabName="deseq2")
+              ),
+              menuItem("Comparison", icon = icon("bar-chart-o"),tabName="compare")
+              
+  ),helpText("Door Mascha")
+)
+
+body <- dashboardBody(
+  tabItems(
+    ### Intro panel
+    tabItem(tabName = "intro",
+            h2("Intro"),
+            p("Hier komt tekst", style = "padding-left: 0em"),
+            
+            ## Data input
+            h3("1. Data input", style = "padding-left: 1em"),
+            p("Input data in '.txt' or '.csv' format", style = "padding-left: 2em"),
+            h4("1.1 Count data", style = "padding left: 3em"), 
+            tableOutput("counttable"),
+            
+            h4("1.2 Meta", style = "padding-left: 3em"),
+            p("Meta data", style = "padding-left: 5em"),
+            tableOutput("metatable"),
+            
+            ### Analysis
+            h3("3. Analysis", style = "padding-left: 1em"),
+            p("This app implements ", a("DESeq2 ", href="http://bioconductor.org/packages/release/bioc/html/DESeq2.html"),
+              "for analysis", style = "padding-left: 2em")
+  ),
+  
+  tabItem(tabName = "workflow",
+          h3("Analysis Workflow"),
+          
+          p(strong("Step 1: Data Input "), "Upload your input data ('Raw Count Table' and 'Meta-data Table')
+            via 'Data Input' section panel for single-factor or multi-factor experiment, 
+            a summary of your input data will be presented."
+            , style="padding-left: 2em; padding-top: 1em"),
+          p(strong("Step 2: Data Summarization "), "Filter out the low expression genetic features via 'Data Summarization' section panel, 
+            summarized count results after filtering will be presented here."
+            , style="padding-left: 2em"),
+          p(strong("Step 3: DE analysis (3 methods) "), "Conduct DE analysis on the 'Data Analysis' section."
+            , style="padding-left: 2em"),
+          p(strong("Step 4: Methods Comparison "), "Compare/cross-validate DE analysis results via 'Methods Comparison' section panel."
+            , style="padding-left: 2em"), 
+          ),
+  
+  tabItem(tabName = "datainput",
+          
+          fluidRow(
+            box(title = "Data Input",
+                solidHeader = TRUE, status = "info",
+                collapsible = TRUE, collapsed = FALSE,
+                width = 12,
+                
+                fluidRow(
+                  box(title = "Count data",
+                      solidHeader = TRUE, status = "info",
+                      width = 6,
+                      helpText("Data upload", style = "color:black; padding-riht:0em"),
+                      
+                      fileInput(inputId = "countfile",
+                                label = NULL,
+                                accept = c("text/tab-seperated-values",
+                                           "text/csv",
+                                           "text/comma-seperated-values",
+                                           "text/tab-seperated-values",
+                                           ".txt",
+                                           ".csv",
+                                           ".tsv")
+                                ),
+                      radioButtons(inputId = "countfilesep",
+                                   label = "seperator",
+                                   choices = c(Comma = ',',
+                                               Semicolon = ';',
+                                               Tab = '\t'),
+                                   selected = '\t')
+                      ),
+                  
+                  ## Meta
+                  
+                  box(title = "Meta",
+                      solidHeader = TRUE, status = "info",
+                      width = 6,
+                      helpText("Upload meta table", style = "color:black; padding-right:0em"),
+                      
+                      fileInput(inputId = "metatab",
+                                label = NULL,
+                                accept = c('text/tab-seperated-values',
+                                           'text/csv',
+                                           'text/comma-seperated-values',
+                                           'text/tab-seperated-values',
+                                           '.txt',
+                                           '.csv',
+                                           '.tsv')
+                                ),
+                      radioButtons(inputId = "metasep",
+                                   label = "seperator",
+                                   choices = c(Comma = ',',
+                                               Semicolon = ';',
+                                               Tab = '\t'),
+                                   selected = '\t'),
+                      helpText("hier kan helptext over metatable", style = "color:black;")
+                      )
+                ),
+                
+                actionButton("datasubmit", label = "submit"),
+                tags$style("button#datasubmit {margin-left:auto;margin-right:auto;display:block; background-color:#00CCF;
+                           padding: 5px; font-family:Andika, Arial, sans-serif; font-size:1.5em; letter-spacing:0.05em;
+                           text-transform:uppercase ;color:#fff; text-shadow: 0px 1px 10px #000;border-radius: 15px;box-shadow:
+                           rgba(0, 0, 0, .55) 0 1px 6px;}"),
+                helpText(textOutput("errorinputsingle"), style = "color:red;")
+                         
+                )
+          ),
+          
+          ## Input information 
+          fluidRow(
+            
+          )
+          )
+))
